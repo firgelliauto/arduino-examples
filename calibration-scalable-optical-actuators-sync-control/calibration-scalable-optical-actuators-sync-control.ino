@@ -18,6 +18,7 @@
  * +5V actuator -> Arduino Uno pin 5V
  * GND actuator -> Arduino Uno pin GND
  * output actuator -> Arduino Uno pin 2
+ * TODO erase this 
  */
 
 #include <elapsedMillis.h>
