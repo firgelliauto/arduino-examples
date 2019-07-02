@@ -115,18 +115,34 @@ void setup() {
 
 void moveTillLimit(int Direction, int Speed){
   //reset counter variables
-  for(int i=0; i<numberOfActuators; i++){
-    counter_[i]=0;
-    prevCounter_[i]=0;
+  for(int i = 0; i < numberOfActuators; i++){
+    counter[i] = 0;
+    prevCounter[i] = 0;
   }  
-  do{
+  do {
     //keep move until counter remains the same for 100ms (i.e at the end)  
-    for(int i=0; i<numberOfActuators; i++) prevCounter_[i]=counter_[i];
-    timeElapsed=0;
-    while(timeElapsed<period){
-      for(int i=0; i<numberOfActuators; i++) driveActuator(i,Direction, Speed);  
+    for(int i = 0; i < numberOfActuators; i++) {
+      prevCounter_[i] = counter_[i];
     }
-  }while(prevCounter_1!=counter_1 or prevCounter_2!=counter_2);  
+    timeElapsed = 0;
+    while(timeElapsed < period){
+      for(int i = 0; i < numberOfActuators; i++) {
+        driveActuator(i, Direction, Speed);
+      }
+    }
+  } while(compareCounter(prevCounter, counter))
+
+}
+
+// If both arrays have a similar element in the same index than return false
+bool compareCounter(int prevCounter, int counter){
+  bool areEqual = true;
+  for(int i = 0; i < numberOfActuators; i++){
+    if(prevCounter[i] == counter[i] ){
+      areEqual = false;
+    }
+  }
+  return areEqual;
 }
 
 void driveActuator(int Actuator, int Direction, int Speed){
