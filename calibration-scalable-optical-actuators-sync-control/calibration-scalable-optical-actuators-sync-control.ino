@@ -1,73 +1,50 @@
-/* Firgelli Automations
+/* Written by Firgelli Automations
  * Limited or no support: we do not have the resources for Arduino code support
- * To report software bugs contact: support@firgelliauto.com
+ * This code exists in the public domain
  * 
- * This progam extends two optical series linear actuators in sync with each other.
- *  
- * This program requires two IBT-2 H-Bridge, Arduino Uno, and two of our supported linear actuators:
- * (Insert list of compatible actuators)
- * Products available for purchase from https://www.firgelliauto.com/
- * 
- * Wiring: (insert link to diagram here)
- * IBT-2 pin VCC -> Arduino Uno pin 5V
- * IBT-2 pin GND -> Arduino Uno pin GND
- * IBT-2 pin R_EN -> Arduino Uno pin 5V
- * IBT-2 pin L_EN -> Arduino Uno pin 5V
- * IBT-2 pin RPWM -> Arduino Uno pin 10 (PWM)
- * IBT-2 pin LPWM -> Arduino Uno pin 11 (PWM)
- * +5V actuator -> Arduino Uno pin 5V
- * GND actuator -> Arduino Uno pin GND
- * output actuator -> Arduino Uno pin 2
- * TODO erase this 
+ * Program requires two (or more) of our supported linear actuators:
+ * FA-OS-35-12-XX
+ * FA-OS-240-12-XX
+ * FA-OS-400-12-XX
+ * Products available for purchase from https://www.firgelliauto.com/collections/linear-actuators/products/optical-sensor-actuators
  */
 
 #include <elapsedMillis.h>
 elapsedMillis timeElapsed;
 
-//The following section of code requires you to customize it to your specific scenario:
-//Number of actuators and pins they are connected to. 
-//After setting these variables you don't need to alter any of the other code unless you want to experiment and optimize.
-
-#define numberOfActuators 2
-#define strokeLength 3  //enter your stroke length here (in inches)
-int RPWM[numberOfActuators]={11, 9};      //PWM signal right side, change to suit the number actuators used and the pins they connect to
-int LPWM[numberOfActuators]={10,6};       //PWM signal left side
-int opticalPins[numberOfActuators]={2,3};
-volatile long lastDebounceTime_0=0;   // the last time the interrupt was triggered
+#define numberOfActuators 2               
+int RPWM[numberOfActuators]={11, 9};        //PWM signal right side
+int LPWM[numberOfActuators]={10,6};       
+int opticalPins[numberOfActuators]={2,3};   //connect optical pins to interrupt pins on Arduino. More information: https://www.arduino.cc/reference/en/language/functions/external-interrupts/attachinterrupt/
+volatile long lastDebounceTime_0=0;         //timer for when interrupt was triggered
 volatile long lastDebounceTime_1=0;
 
-//After customizing the above lines of code you do not need to alter any of the remaining lines unless you want to.
-//Need to add comment about changing interrupt functions, debounce time
-
-int Speed = 255;  //choose any speed in the range [0, 255]
-int period=200;
+int Speed = 255;                            //choose any speed in the range [0, 255]
+int period=200;                             //interval of waiting time to verify actuator as reached its limit
 int currentTime;
 
-#define falsepulseDelay 20 //noise pulse time, if too high, ISR will miss pulses.                          
-volatile int counter[numberOfActuators] = {};   
-int prevCounter[numberOfActuators] = {};     
-int Direction=1;    //-1 = retracting
-                    // 0 = stopped
-                    // 1 = extending
+#define falsepulseDelay 20                  //noise pulse time, if too high, ISR will miss pulses.                          
+volatile int counter[numberOfActuators]={};   
+int prevCounter[numberOfActuators]={};     
+int Direction=1;                            //-1 = retracting
+                                            // 0 = stopped
+                                            // 1 = extending
 
 int extensionCount[numberOfActuators] = {};  
 int retractionCount[numberOfActuators] = {};  
 int pulseTotal[numberOfActuators]={};   //stores number of pulses in one full extension/actuation
 
-void setup() {
+void setup(){
   for(int i=0; i<numberOfActuators; i++){
     pinMode(RPWM[i],OUTPUT);
     pinMode(LPWM[i], OUTPUT);
     pinMode(opticalPins[i], INPUT_PULLUP);
   }
-  
   attachInterrupt(digitalPinToInterrupt(opticalPins[0]), count_0, RISING);
   attachInterrupt(digitalPinToInterrupt(opticalPins[1]), count_1, RISING);  
-  
-  memset(counter, 0, numberOfActuators);  //initialize as an array of zeros 
+
+  memset(counter, 0, numberOfActuators);              //initialize as an array of zeros 
   memset(prevCounter, 0, numberOfActuators);  
-  memset(extensionCount, 0, numberOfActuators);  
-  memset(retractionCount, 0, numberOfActuators);
   memset(extensionCount, 0, numberOfActuators);
   memset(retractionCount, 0, numberOfActuators);
   memset(pulseTotal, 0, numberOfActuators);
@@ -80,26 +57,27 @@ void setup() {
   delay(1000);
 
   for(int i=0; i<numberOfActuators; i++){
-    Serial.print("\t\t\t\tActuator \t\t\t");
+    Serial.print("\t\t\t\tActuator ");
     Serial.print(i);
-    Serial.print("\t\t\t");
   }
       
   moveTillLimit(1, 255); //extend fully and count pulses
-  Serial.print("\nExtension Count:\t\t");
+  Serial.print("\nExtension Count:");
   for(int i=0; i<numberOfActuators; i++){
-    extensionCount_[i]=counter_[i];
-    Serial.print(extensionCount_[i]);
-    Serial.print("\t\t\t\t");  
+    extensionCount[i]=counter[i];
+    Serial.print("\t\t");  
+    Serial.print(extensionCount[i]);
+    Serial.print("\t\t\t");  
   }
   delay(1000);
   
   moveTillLimit(-1, 255); //retract fully and count pulses
-  Serial.print("\nRetraction Count:\t\t");
+  Serial.print("\nRetraction Count:");
   for(int i=0; i<numberOfActuators; i++){
-    retractionCount_[i]=counter_[i];
-    Serial.print(retractionCount_[i]);
-    Serial.print("\t\t\t\t");  
+    retractionCount[i]=counter[i];
+    Serial.print("\t\t");  
+    Serial.print(retractionCount[i]);
+    Serial.print("\t\t\t");  
   }
   delay(1000);
 
@@ -107,27 +85,47 @@ void setup() {
     Serial.print("\nActuator ");
     Serial.print(i);
     Serial.print(" average pulses: ");
-    pulseTotal[i]=(extensionCount_[i]+retractionCount_[i])/2;   //takes the average of measurements
+    pulseTotal[i]=(extensionCount[i]+retractionCount[i])/2;   //takes the average of measurements
     Serial.print(pulseTotal[i]);  
-  }
-  
-  Serial.println("\nEnter these values in the syncronous control progam.");
+  }  
+  Serial.println("\n\nEnter these values in the synchronous control progam.");
+}
+
+void loop() {  
 }
 
 void moveTillLimit(int Direction, int Speed){
-  //reset counter variables
-  for(int i=0; i<numberOfActuators; i++){
-    counter_[i]=0;
-    prevCounter_[i]=0;
+  //this function moves the actuator to one of its limits
+  for(int i = 0; i < numberOfActuators; i++){
+    counter[i] = 0;                                     //reset counter variables
+    prevCounter[i] = 0;
   }  
-  do{
-    //keep move until counter remains the same for 100ms (i.e at the end)  
-    for(int i=0; i<numberOfActuators; i++) prevCounter_[i]=counter_[i];
-    timeElapsed=0;
-    while(timeElapsed<period){
-      for(int i=0; i<numberOfActuators; i++) driveActuator(i,Direction, Speed);  
+  do {
+    for(int i = 0; i < numberOfActuators; i++) {
+      prevCounter[i] = counter[i];
     }
-  }while(prevCounter_1!=counter_1 or prevCounter_2!=counter_2);  
+    timeElapsed = 0;
+    while(timeElapsed < period){                       //keep moving until counter remains the same for the duration of "period" variable  
+      for(int i = 0; i < numberOfActuators; i++) {
+        driveActuator(i, Direction, Speed);
+      }
+    }
+  } while(compareCounter(prevCounter, counter));      //loop until all counts remain the same
+}
+
+bool compareCounter(int prevCounter[], int counter[]){
+  //compares two arrays and returns false when every element of one array is the same as its corresponding indexed element in the other array
+  bool areUnequal = true;
+  for(int i = 0; i < numberOfActuators; i++){
+    if(prevCounter[i] == counter[i]){
+      areUnequal = false;
+    } 
+    else{                                             //if even one pair of elements are unequal the entire function returns true
+      areUnequal = true;
+      break;
+    }
+  }
+  return areUnequal;
 }
 
 void driveActuator(int Actuator, int Direction, int Speed){
@@ -152,18 +150,15 @@ void driveActuator(int Actuator, int Direction, int Speed){
   }
 }
 
-void loop() {  
-}
-
 void count_0(){
   //This interrupt function increments a counter corresponding to changes in the optical pin status
   if ((millis() - lastDebounceTime_0) > falsepulseDelay) {    //reduce noise by debouncing IR signal 
     lastDebounceTime_0 = millis();
     if(Direction==1){
-      counter_[0]++;
+      counter[0]++;
     }
     if(Direction==-1){
-      counter_[0]--;
+      counter[0]--;
     }
   }
 }
@@ -172,10 +167,10 @@ void count_1(){
   if ((millis() - lastDebounceTime_1) > falsepulseDelay) {   
     lastDebounceTime_1 = millis();
     if(Direction==1){
-      counter_[1]++;
+      counter[1]++;
     }
     if(Direction==-1){
-      counter_[1]--;
+      counter[1]--;
     }
   }
 }
