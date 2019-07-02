@@ -131,7 +131,6 @@ void moveTillLimit(int Direction, int Speed){
       }
     }
   } while(compareCounter(prevCounter, counter))
-
 }
 
 // If both arrays have a similar element in the same index than return false
